@@ -1,0 +1,147 @@
+#!/bin/bash
+set -eu
+
+# shellcheck source=start-utils
+. "$(dirname "$0")/start-utils"
+
+: "${INFERNOS_MANIFEST_URL:=https://infernos.co.za/api/modpack-templates/public/manifest}"
+: "${INFERNOS_FORCE_REINSTALL:=false}"
+
+isDebugging && set -x
+
+ensureRemoveAllModsOff "MODPACK_PLATFORM=INFERNOS"
+
+log "Fetching Infernos modpack manifest from ${INFERNOS_MANIFEST_URL}"
+
+# Fetch the manifest
+manifest_file=/tmp/infernos-manifest.json
+if ! curl -fsSL "${INFERNOS_MANIFEST_URL}" -o "${manifest_file}"; then
+  logError "Failed to fetch Infernos manifest from ${INFERNOS_MANIFEST_URL}"
+  exit 1
+fi
+
+# Parse manifest to get Minecraft version, modloader version, and mods
+mc_version=$(jq -r '.mc_version' "${manifest_file}")
+modloader=$(jq -r '.modloader' "${manifest_file}")
+modloader_version=$(jq -r '.modloader_version' "${manifest_file}")
+modpack_version=$(jq -r '.modpack_version' "${manifest_file}")
+
+log "Manifest details:"
+log "  Minecraft version: ${mc_version}"
+log "  Modloader: ${modloader}"
+log "  Modloader version: ${modloader_version}"
+log "  Modpack version: ${modpack_version}"
+
+# Set Minecraft version from manifest
+export VERSION="${mc_version}"
+
+# Install NeoForge based on manifest
+if [[ "${modloader^^}" != "NEOFORGE" ]]; then
+  logError "Unsupported modloader: ${modloader}. Only NeoForge is currently supported."
+  exit 1
+fi
+
+resultsFile=/data/.run-infernos-neoforge.env
+
+log "Installing NeoForge ${modloader_version} for Minecraft ${mc_version}"
+if ! mc-image-helper install-neoforge \
+  --output-directory=/data \
+  --results-file=${resultsFile} \
+  --minecraft-version="${mc_version}" \
+  --neoforge-version="${modloader_version}" \
+  --force-reinstall="${INFERNOS_FORCE_REINSTALL}"; then
+    logError "Failed to install NeoForge"
+    exit 1
+fi
+
+applyResultsFile ${resultsFile}
+
+export FAMILY=FORGE
+
+# Download mods from manifest
+log "Downloading mods from manifest..."
+mods_dir=/data/mods
+mkdir -p "${mods_dir}"
+
+# Check if we need to update mods
+version_file=/data/.infernos-version
+current_version=""
+if [[ -f "${version_file}" ]]; then
+  current_version=$(cat "${version_file}")
+fi
+
+if [[ "${current_version}" != "${modpack_version}" ]] || isTrue "${INFERNOS_FORCE_REINSTALL}"; then
+  log "Modpack version changed or force reinstall requested. Updating mods..."
+  log "  Current version: ${current_version:-none}"
+  log "  New version: ${modpack_version}"
+  
+  # Extract mods array and filter for server mods only
+  mod_count=$(jq '.mods | length' "${manifest_file}")
+  log "Found ${mod_count} total mods in manifest"
+  
+  # Count server mods (mods that have "server" in their tags array)
+  server_mod_count=$(jq '[.mods[] | select(.tags[]? == "server")] | length' "${manifest_file}")
+  log "Found ${server_mod_count} mod(s) with 'server' tag to download"
+  
+  if [[ "${server_mod_count}" -eq 0 ]]; then
+    logWarning "No mods with 'server' tag found in manifest"
+  fi
+  
+  mod_index=0
+  for ((i=0; i<mod_count; i++)); do
+    # Check if this mod has "server" tag in its tags array
+    has_server_tag=$(jq -e ".mods[${i}].tags[]? | select(. == \"server\")" "${manifest_file}" > /dev/null 2>&1 && echo "true" || echo "false")
+    
+    if [[ "${has_server_tag}" != "true" ]]; then
+      mod_name=$(jq -r ".mods[${i}].filename" "${manifest_file}")
+      debug "Skipping mod ${mod_name} (no 'server' tag)"
+      continue
+    fi
+    
+    mod_index=$((mod_index + 1))
+    mod_url=$(jq -r ".mods[${i}].download_url" "${manifest_file}")
+    mod_filename=$(jq -r ".mods[${i}].filename" "${manifest_file}")
+    mod_sha1=$(jq -r ".mods[${i}].sha1" "${manifest_file}")
+    
+    log "Downloading server mod ${mod_index}/${server_mod_count}: ${mod_filename}"
+    
+    mod_path="${mods_dir}/${mod_filename}"
+    
+    # Download the mod to a temporary location first
+    temp_download=$(mktemp)
+    if ! curl -fsSL "${mod_url}" -o "${temp_download}"; then
+      logError "Failed to download mod: ${mod_filename} from ${mod_url}"
+      rm -f "${temp_download}"
+      exit 1
+    fi
+    
+    # Verify SHA1 if provided
+    if [[ -n "${mod_sha1}" ]] && [[ "${mod_sha1}" != "null" ]]; then
+      actual_sha1=$(sha1sum "${temp_download}" | cut -d' ' -f1)
+      if [[ "${actual_sha1}" != "${mod_sha1}" ]]; then
+        logError "SHA1 mismatch for ${mod_filename}"
+        logError "  Expected: ${mod_sha1}"
+        logError "  Actual: ${actual_sha1}"
+        rm -f "${temp_download}"
+        exit 1
+      fi
+      debug "SHA1 verification passed for ${mod_filename}"
+    fi
+    
+    # Move to final location
+    mv "${temp_download}" "${mod_path}"
+  done
+  
+  # Save the modpack version
+  echo "${modpack_version}" > "${version_file}"
+  log "Modpack updated to version ${modpack_version}"
+else
+  log "Modpack version unchanged (${modpack_version}). Skipping mod download."
+fi
+
+export USES_MODS=true
+
+rm -f "${manifest_file}"
+
+exec "$(dirname "$0")/start-setupWorld" "$@"
+

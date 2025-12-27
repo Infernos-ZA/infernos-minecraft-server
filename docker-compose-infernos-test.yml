@@ -1,0 +1,20 @@
+services:
+  mc:
+    # Using pre-built image - we'll copy our scripts into it at runtime
+    image: itzg/minecraft-server:latest
+    environment:
+      EULA: "TRUE"
+      TYPE: INFERNOS
+      DEBUG: "true"
+    ports:
+      - "25565:25565"
+      - "8100:8100"
+    volumes:
+      - infernos-data:/data
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+volumes:
+  infernos-data:
+

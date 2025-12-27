@@ -1,0 +1,11 @@
+FROM itzg/minecraft-server:latest
+
+# Copy our custom scripts
+COPY scripts/start-deployInfernos /image/scripts/start-deployInfernos
+COPY scripts/start-configuration /image/scripts/start-configuration
+
+# Fix line endings and ensure scripts are executable
+RUN dos2unix /image/scripts/start-deployInfernos /image/scripts/start-configuration 2>/dev/null || \
+    sed -i 's/\r$//' /image/scripts/start-deployInfernos /image/scripts/start-configuration && \
+    chmod +x /image/scripts/start-deployInfernos /image/scripts/start-configuration
+

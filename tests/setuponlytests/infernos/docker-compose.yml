@@ -1,0 +1,14 @@
+services:
+  mc:
+    image: ${IMAGE_TO_TEST:-itzg/minecraft-server}
+    build:
+      context: ../../..
+      dockerfile: Dockerfile
+    environment:
+      EULA: "true"
+      SETUP_ONLY: "TRUE"
+      TYPE: INFERNOS
+      DEBUG: "true"
+    volumes:
+      - ./data:/data
+
