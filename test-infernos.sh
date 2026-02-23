@@ -7,7 +7,7 @@ docker-compose -f docker-compose-infernos-test.yml build
 echo ""
 echo "Starting Infernos Minecraft server..."
 echo "This will:"
-echo "  1. Fetch manifest from https://infernos.co.za/api/modpack-templates/public/manifest"
+echo "  1. Fetch manifest from https://infernos.co.za/api/launcher/manifest"
 echo "  2. Install NeoForge"
 echo "  3. Download all mods with 'server' tag"
 echo ""

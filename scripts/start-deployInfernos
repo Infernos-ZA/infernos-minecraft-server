@@ -4,7 +4,7 @@ set -eu
 # shellcheck source=start-utils
 . "$(dirname "$0")/start-utils"
 
-: "${INFERNOS_MANIFEST_URL:=https://infernos.co.za/api/modpack-templates/public/manifest}"
+: "${INFERNOS_MANIFEST_URL:=https://infernos.co.za/api/launcher/manifest}"
 : "${INFERNOS_FORCE_REINSTALL:=false}"
 
 isDebugging && set -x

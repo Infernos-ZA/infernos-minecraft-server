@@ -1,0 +1,23 @@
+services:
+  mc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      EULA: "TRUE"
+      TYPE: INFERNOS
+      # Optional: Force reinstall of modpack
+      # INFERNOS_FORCE_REINSTALL: "false"
+      # Optional: Custom manifest URL (defaults to official)
+      # INFERNOS_MANIFEST_URL: "https://infernos.co.za/api/launcher/manifest"
+    ports:
+      - "25565:25565"
+    volumes:
+      - infernos-data:/data
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+
+volumes:
+  infernos-data:
+
